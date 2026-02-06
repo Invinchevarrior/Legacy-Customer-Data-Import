@@ -1,10 +1,9 @@
-const request = require('supertest');
-const mongoose = require('mongoose');
-const app = require('../src/app');
+﻿const mongoose = require('mongoose');
 const User = require('../src/models/user');
 
 beforeAll(async () => {
-  await mongoose.connect('mongodb://localhost:27017/test_db');
+  const uri = process.env.MONGO_URI_TEST || 'mongodb://localhost:27017/test_db';
+  await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 });
 
 afterEach(async () => {
@@ -15,9 +14,8 @@ afterAll(async () => {
   await mongoose.connection.close();
 });
 
-describe('User Management API', () => {
-  it('should create a valid user via generic flow', async () => {
-    // This tests the model validation logic indirectly
+describe('User model validation', () => {
+  it('creates a valid user', async () => {
     const validUser = new User({
       full_name: 'John Doe',
       email: 'john@example.com',
@@ -29,10 +27,10 @@ describe('User Management API', () => {
     expect(savedUser.email).toBe('john@example.com');
   });
 
-  it('should fail if email is invalid', async () => {
+  it('rejects invalid email', async () => {
     const invalidUser = new User({
       full_name: 'Jane Doe',
-      email: 'not-an-email', // [cite: 19]
+      email: 'not-an-email',
       date_of_birth: '1990-01-01'
     });
     await expect(invalidUser.save()).rejects.toThrow();
