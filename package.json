@@ -1,0 +1,19 @@
+{
+  "name": "legacy-customer-import",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node server.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "csv-parser": "^3.0.0",
+    "express": "^4.18.2",
+    "mongoose": "^7.0.0",
+    "multer": "^1.4.5-lts.1",
+    "validator": "^13.9.0"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "supertest": "^6.3.3"
+  }
+}
