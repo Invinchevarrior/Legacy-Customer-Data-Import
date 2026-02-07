@@ -49,10 +49,10 @@ const validateRow = (row) => {
 
 exports.importUsers = async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded' });
-
+  const filePath = req.file.path;
   try {
-    const report = await csvWorker.processCSV(req.file.path, validateRow, async (row) => {
-      // create user
+    const report = await csvWorker.processCSV(filePath, validateRow, async (row) => {
+      // create user - map fields explicitly
       return User.create({
         full_name: row.full_name,
         email: row.email,
@@ -61,14 +61,20 @@ exports.importUsers = async (req, res) => {
       });
     });
 
-    // remove uploaded file
-    try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
-
     return res.json(report);
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error('Import error:', err);
+    return res.status(500).json({ error: 'Failed to process CSV' });
+  } finally {
+    // Ensure uploaded file is removed in all cases
+    try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
   }
 };
+
+// Ensure uploaded file is removed in all cases
+// Wrap importUsers call site with middleware could handle cleanup but perform safe cleanup here
+// (Note: multer stores files on disk; ensure uploads folder has proper lifecycle management in production)
+
 
 // CRUD Operations
 exports.getUser = async (req, res) => {
@@ -83,7 +89,15 @@ exports.getUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    // Whitelist fields that can be updated
+    const allowed = ['full_name', 'email', 'date_of_birth', 'timezone'];
+    const update = {};
+    allowed.forEach((k) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, k)) update[k] = req.body[k];
+    });
+    if (update.date_of_birth) update.date_of_birth = new Date(update.date_of_birth);
+
+    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
   } catch (err) {

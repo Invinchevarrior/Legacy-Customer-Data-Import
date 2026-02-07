@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 const request = require('supertest');
 
 const app = require('../src/app');
-const User = require('../src/models/User');
+const User = require('../src/models/user');
 
 const createTempCsv = (content) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-import-'));

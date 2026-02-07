@@ -28,4 +28,8 @@ const userSchema = new mongoose.Schema({
   }
 });
 
+// Ensure a unique index exists for email at the schema level.
+// This declares the index; mongoose will create it when the model is initialized.
+userSchema.index({ email: 1 }, { unique: true });
+
 module.exports = mongoose.model('User', userSchema);
