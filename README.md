@@ -8,14 +8,14 @@ A backend service for importing customer records from CSV files into MongoDB, wi
 - Node.js v18+
 - MongoDB (local or remote)
 
-### Installation
+### Installation (via Powershell)
 
 ```powershell
 # Install Node.js dependencies
 npm install
 
 # Verify MongoDB is running (default: localhost:27017)
-mongod --dbpath C:\data\db
+Get-Service -Name MongoDB
 ```
 
 ### Run the Application
@@ -32,7 +32,12 @@ Server runs at `http://localhost:3000`
 npm test
 ```
 
-Ensure MongoDB is running before executing tests.
+Ensure MongoDB is running before executing tests. The test suite includes 48 comprehensive tests covering:
+- User model validation (12 tests)
+- CSV import functionality (11 tests)
+- CRUD operations (16 tests)
+- Edge cases and advanced scenarios (8 tests)
+- **Current Status: 100% passing (48/48)**
 
 ---
 
@@ -200,22 +205,25 @@ Invoke-WebRequest -Uri "http://localhost:3000/api/users/507f1f77bcf86cd799439011
 
 ```
 src/
-  app.js                 # Express app initialization
-  server.js             # Server entry point and MongoDB connection
+  app.js                    # Express app initialization and middleware setup
   config/
-    db.js               # MongoDB connection setup
+    db.js                  # MongoDB connection setup for production
   controllers/
-    userController.js   # CSV import handler and CRUD operations
+    userController.js      # CSV import handler and CRUD operations (validateRow, importUsers, getUser, updateUser, deleteUser)
   models/
-    User.js             # Mongoose schema with validation rules
+    User.js                # Mongoose schema with validation rules, unique email index
   routes/
-    userRoutes.js       # API route definitions
+    userRoutes.js          # API route definitions with multer configuration
   utils/
-    csvWorker.js        # CSV streaming and processing logic
+    csvWorker.js           # CSV streaming (pause/resume for backpressure) with async operation tracking
 tests/
-  user.test.js          # Unit tests for User model
-  import.test.js        # Integration tests for CSV import
-  extended.test.js      # Extended tests for edge cases
+  user.test.js             # 12 unit tests: User model validation, schema rules, constraints
+  import.test.js           # 11 integration tests: CSV import, validation, edge cases, large datasets
+  crud.test.js             # 16 CRUD tests: GET/PUT/DELETE operations, field whitelisting, error handling
+  extended.test.js         # 8 advanced tests: duplicates, memory limits, timezone, file filtering
+jest.setup.js            # Jest configuration: database connection management across all test files
+package.json             # npm dependencies and Jest config (serial execution via maxWorkers: 1)
+server.js                # Server entry point and MongoDB connection for production
 ```
 
 ---
@@ -256,6 +264,16 @@ tests/
 - **Overridable**: Use `MONGO_URI` and `MONGO_URI_TEST` environment variables for custom URIs
 - **Index Strategy**: Email uniqueness enforced at both schema and database index levels
 
+### Test Execution
+- **Serial Execution**: Tests run serially (`maxWorkers: 1`) to ensure database isolation and prevent race conditions
+- **Connection Management**: Single MongoDB connection shared across all test suites via `jest.setup.js`
+- **Database Cleanup**: Each test file has `beforeEach` and `afterEach` hooks to guarantee clean state
+- **Test Organization**:
+  - `user.test.js`: Validates User schema rules (required fields, email format, date constraints, timezone validation, unique constraint)
+  - `import.test.js`: Tests CSV upload endpoint with valid/invalid rows, large files, error reporting, field validation
+  - `crud.test.js`: Tests GET/PUT/DELETE operations, field whitelisting, error handling, data isolation
+  - `extended.test.js`: Edge cases (duplicate emails, memory caps, file type filtering, timezone edge cases)
+
 ### Limitations
 - **No Rate Limiting**: Add authentication/rate limiting for production use
 - **No Authentication**: Endpoints are unauthenticated; add security layer as needed
@@ -263,3 +281,4 @@ tests/
 - **Timezone Validation**: Depends on Node.js Intl support (varies across builds)
 - **No Pagination**: User listing endpoints not implemented
 - **UTF-8 Assumed**: No automatic CSV encoding detection
+- **Serial Test Execution**: Tests run sequentially (`maxWorkers: 1`) - suitable for development, may slow down CI/CD pipelines for large test suites

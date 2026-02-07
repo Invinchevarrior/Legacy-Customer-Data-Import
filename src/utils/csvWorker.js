@@ -23,7 +23,7 @@ const processCSV = (filePath, validateFn, insertFn) => {
     const MAX_REJECTED_DETAILS = 200; // Prevent unbounded memory growth on large rejections
     const report = { processed: 0, success: 0, rejected: 0, rejected_details: [] };
 
-    const stream = fs.createReadStream(filePath).pipe(csv({ skipLines: 0 }));
+    const stream = fs.createReadStream(filePath).pipe(csv());
 
     // Track pending async operations to ensure all complete before resolving
     let pending = 0;

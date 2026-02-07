@@ -15,5 +15,11 @@
   "devDependencies": {
     "jest": "^29.5.0",
     "supertest": "^6.3.3"
+  },
+  "jest": {
+    "setupFilesAfterEnv": ["<rootDir>/jest.setup.js"],
+    "testEnvironment": "node",
+    "testTimeout": 10000,
+    "maxWorkers": 1
   }
 }
