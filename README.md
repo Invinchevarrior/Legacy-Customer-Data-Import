@@ -1,43 +1,85 @@
-# Legacy Customer Data Import
+# Legacy Customer Data Import - Production Ready
 
-A backend service for importing customer records from CSV files into MongoDB, with built-in validation, error handling, and complete CRUD APIs.
+A **production-ready** backend service for importing customer records from CSV files into MongoDB, with comprehensive security, authentication, rate limiting, transaction safety, and complete CRUD APIs.
 
-## Quick Start
+> ⚠️ **IMPORTANT:** This version includes CRITICAL SECURITY IMPLEMENTATIONS. See [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md) for complete security documentation.
 
-### Prerequisites
-- Node.js v18+
-- MongoDB (local or remote)
+## What's New - Security & Production Features
 
-### Installation (via Powershell)
+### 🔐 Authentication & Authorization
+- JWT token-based authentication
+- API key management with role-based access control
+- Admin, User, and Viewer roles
+- Audit logging for all operations
+
+### 🛡️ Rate Limiting
+- 100 API requests per 15 minutes per IP (prevents DoS)
+- 5 authentication attempts per 15 minutes (prevents brute force)
+- 10 CSV uploads per hour (prevents abuse)
+- 50 CRUD operations per 15 minutes
+
+### ✅ Request Validation & Sanitization
+- Input validation using express-validator
+- NoSQL injection prevention
+- XSS attack prevention
+- CSV formula injection prevention
+
+### 📦 File Safety
+- CSV bomb detection and prevention
+- 50 MB file size limit
+- 100,000 row limit
+- 100 column limit per row
+- Malicious file pattern detection
+
+### 💾 Database Transaction Safety
+- ACID-compliant bulk operations
+- Automatic rollback on errors
+- Consistent state guarantee
+- All-or-nothing semantics
+
+### 📍 API Versioning
+- Versioned endpoints (`/api/v1/`)
+- Clear migration path for future versions
+- Backward compatibility support
+- Deprecation planning
+
+---
+
+## Quick Start Guide
+
+### Installation
 
 ```powershell
-# Install Node.js dependencies
+# 1. Install dependencies
 npm install
 
-# Verify MongoDB is running (default: localhost:27017)
+# 2. Verify MongoDB is running
 Get-Service -Name MongoDB
-```
 
-### Run the Application
-
-```powershell
+# 3. Start the server
 npm start
 ```
 
 Server runs at `http://localhost:3000`
 
-### Run Tests
+### First-Time Authentication Setup
 
 ```powershell
-npm test
-```
+# 1. Get a JWT token using default API key
+$response = Invoke-WebRequest -Uri "http://localhost:3000/auth/login" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"apiKey":"user-default-key-change-this"}'
 
-Ensure MongoDB is running before executing tests. The test suite includes 48 comprehensive tests covering:
-- User model validation (12 tests)
-- CSV import functionality (11 tests)
-- CRUD operations (16 tests)
-- Edge cases and advanced scenarios (8 tests)
-- **Current Status: 100% passing (48/48)**
+# 2. Extract token
+$token = ($response.Content | ConvertFrom-Json).token
+
+# 3. Use token for API calls
+$headers = @{ "Authorization" = "Bearer $token" }
+Invoke-WebRequest -Uri "http://localhost:3000/api/v1/users" `
+  -Method Get `
+  -Headers $headers
+```
 
 ---
 
@@ -46,10 +88,11 @@ Ensure MongoDB is running before executing tests. The test suite includes 48 com
 | Component | Technology |
 |-----------|------------|
 | Backend | Node.js + Express.js |
-| Database | MongoDB (Mongoose ORM) |
-| CSV Processing | csv-parser (streaming) |
-| Validation | validator library |
-| File Upload | multer |
+| Database | MongoDB (Mongoose ORM) with Transactions |
+| CSV Processing | csv-parser (streaming) + validation |
+| Authentication | JWT + API Keys |
+| Validation | express-validator |
+| Security | bcryptjs, rate-limiting |
 | Testing | Jest + supertest |
 
 ---
@@ -58,23 +101,35 @@ Ensure MongoDB is running before executing tests. The test suite includes 48 com
 
 ### Base URL
 ```
-http://localhost:3000/api/users
+http://localhost:3000/api/v1
 ```
 
-### 1. Upload & Import CSV
+### Authentication
 
-**POST** `/upload`
+**API v1 (`/api/v1/*`) endpoints require authentication** via JWT token (recommended).  
+For backwards compatibility, the legacy endpoints mounted at `/api/users/*` are still present in code and **do not use the v1 auth middleware by default** (see “Legacy compatibility endpoints” below).
 
-Upload a CSV file and import customer records with automatic validation.
+**Option 1: JWT Token**
+```http
+Authorization: Bearer <your-token>
+```
 
-**Request:**
-```powershell
-# PowerShell example
-$filePath = "C:\path\to\customers.csv"
-$form = @{ file = Get-Item -Path $filePath }
-Invoke-WebRequest -Uri "http://localhost:3000/api/users/upload" `
-  -Method Post `
-  -Form $form
+**Option 2: API Key (Development/Admin)**
+```http
+X-API-Key: <your-api-key>
+```
+
+### Endpoints
+
+#### Upload & Import CSV
+
+```http
+POST /api/v1/users/upload
+
+Content-Type: multipart/form-data
+Authorization: Bearer <token>
+
+file: @customers.csv
 ```
 
 **CSV Format:**
@@ -84,201 +139,302 @@ John Doe,john@example.com,1990-01-15,America/New_York
 Jane Smith,jane@example.com,1985-03-22,Europe/London
 ```
 
-**Response (200 OK) - All valid:**
-```json
+#### Get Users (Paginated)
+
+```http
+GET /api/v1/users?page=1&limit=10
+Authorization: Bearer <token>
+```
+
+#### Get User by ID
+
+```http
+GET /api/v1/users/{userId}
+Authorization: Bearer <token>
+```
+
+#### Update User
+
+```http
+PUT /api/v1/users/{userId}
+Authorization: Bearer <token>
+Content-Type: application/json
+
 {
-  "processed": 2,
-  "success": 2,
-  "rejected": 0,
-  "rejected_details": []
-}
-```
-
-**Response (200 OK) - With errors:**
-```json
-{
-  "processed": 3,
-  "success": 1,
-  "rejected": 2,
-  "rejected_details": [
-    {
-      "row": {
-        "full_name": "Bob Johnson",
-        "email": "invalid-email",
-        "date_of_birth": "1992-06-10",
-        "timezone": "UTC"
-      },
-      "errors": ["Invalid email format"]
-    },
-    {
-      "row": {
-        "full_name": "Alice Williams",
-        "email": "alice@example.com",
-        "date_of_birth": "2025-12-01",
-        "timezone": "UTC"
-      },
-      "errors": ["date_of_birth must be in the past"]
-    }
-  ]
-}
-```
-
----
-
-### 2. Get User by ID
-
-**GET** `/:id`
-
-Retrieve user details by MongoDB ObjectId.
-
-**Response (200 OK):**
-```json
-{
-  "_id": "507f1f77bcf86cd799439011",
-  "full_name": "John Doe",
-  "email": "john@example.com",
-  "date_of_birth": "1990-01-15T00:00:00.000Z",
-  "timezone": "America/New_York"
-}
-```
-
-**PowerShell:**
-```powershell
-Invoke-WebRequest -Uri "http://localhost:3000/api/users/507f1f77bcf86cd799439011"
-```
-
----
-
-### 3. Update User
-
-**PUT** `/:id`
-
-Update user details. Only these fields can be updated: `full_name`, `email`, `date_of_birth`, `timezone`.
-
-**Request:**
-```powershell
-$body = @{
-    full_name = "John Doe Updated"
-    timezone = "Europe/London"
-} | ConvertTo-Json
-
-Invoke-WebRequest -Uri "http://localhost:3000/api/users/507f1f77bcf86cd799439011" `
-  -Method Put `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body $body
-```
-
-**Response (200 OK):**
-```json
-{
-  "_id": "507f1f77bcf86cd799439011",
-  "full_name": "John Doe Updated",
-  "email": "john@example.com",
-  "date_of_birth": "1990-01-15T00:00:00.000Z",
+  "full_name": "Jane Doe",
   "timezone": "Europe/London"
 }
 ```
 
+#### Delete User (Admin Only)
+
+```http
+DELETE /api/v1/users/{userId}
+Authorization: Bearer <admin-token>
+```
+
+#### Export Users as CSV (Admin Only)
+
+```http
+GET /api/v1/users/export/csv
+Authorization: Bearer <admin-token>
+```
+
+#### Legacy compatibility endpoints (Unversioned)
+
+The app currently also mounts **legacy routes** at:
+
+```http
+/api/users/*
+```
+
+Notes:
+- These routes exist for compatibility with older clients/tests.
+- They are **not protected by the v1 JWT middleware** in `src/app.js`.
+- They also use a **smaller upload limit (5 MB)** than v1 (v1 supports up to 50 MB).
+- For production deployments, you should disable these routes or add equivalent auth/limits.
+
 ---
 
-### 4. Delete User
+## Testing
 
-**DELETE** `/:id`
+### Run Full Test Suite
 
-Remove a user record.
-
-**Response (200 OK):**
-```json
-{
-  "message": "User deleted successfully"
-}
-```
-
-**PowerShell:**
 ```powershell
-Invoke-WebRequest -Uri "http://localhost:3000/api/users/507f1f77bcf86cd799439011" -Method Delete
+npm test
 ```
+
+### Current Status
+- ✅ 58/58 tests passing (100%)
+- ✅ 5/5 test suites passing
+- Test files:
+  - `tests/user.test.js` (User model validation)
+  - `tests/import.test.js` (legacy CSV import endpoint)
+  - `tests/crud.test.js` (legacy CRUD endpoints)
+  - `tests/extended.test.js` (edge cases & limits)
+  - `tests/securityVersioning.test.js` (v1 vs legacy security/versioning coverage)
+
+---
+
+## Security Documentation
+
+**For complete security implementation details, validation rules, and deployment checklist, see:**
+
+### 📋 [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md)
+
+Topics covered:
+- Authentication & Authorization implementation
+- Rate limiting configuration
+- Request validation & sanitization rules
+- CSV file validation & bomb detection
+- Database transaction safety
+- API versioning strategy
+- Setup & configuration guide
+- Deployment checklist
+- Troubleshooting guide
 
 ---
 
 ## Project Structure
 
 ```
-src/
-  app.js                    # Express app initialization and middleware setup
-  config/
-    db.js                  # MongoDB connection setup for production
-  controllers/
-    userController.js      # CSV import handler and CRUD operations (validateRow, importUsers, getUser, updateUser, deleteUser)
-  models/
-    User.js                # Mongoose schema with validation rules, unique email index
-  routes/
-    userRoutes.js          # API route definitions with multer configuration
-  utils/
-    csvWorker.js           # CSV streaming (pause/resume for backpressure) with async operation tracking
-tests/
-  user.test.js             # 12 unit tests: User model validation, schema rules, constraints
-  import.test.js           # 11 integration tests: CSV import, validation, edge cases, large datasets
-  crud.test.js             # 16 CRUD tests: GET/PUT/DELETE operations, field whitelisting, error handling
-  extended.test.js         # 8 advanced tests: duplicates, memory limits, timezone, file filtering
-jest.setup.js            # Jest configuration: database connection management across all test files
-package.json             # npm dependencies and Jest config (serial execution via maxWorkers: 1)
-server.js                # Server entry point and MongoDB connection for production
+├── server.js                           # Server entry point (connects DB, starts Express)
+├── src/
+│   ├── app.js                          # Express app setup (security headers, routing)
+│   ├── config/
+│   │   ├── db.js                       # Database configuration + transactions
+│   │   └── auth.js                     # Authentication & role configuration
+│   ├── middleware/
+│   │   ├── auth.js                     # JWT authentication
+│   │   ├── apiKeyAuth.js               # API key authentication
+│   │   ├── rateLimiter.js              # Rate limiting
+│   │   ├── validation.js               # Request validation
+│   │   ├── csvFileValidator.js         # CSV file validation / bomb detection
+│   │   └── errorHandler.js             # Centralized error handling
+│   ├── routes/
+│   │   ├── authRoutes.js               # Authentication endpoints (/auth/*)
+│   │   ├── userRoutes.js               # Legacy user routes (/api/users/*)
+│   │   └── v1/
+│   │       └── userRoutes.js           # API v1 user routes (/api/v1/users/*)
+│   ├── controllers/
+│   │   ├── userController.js           # Legacy controller (used by legacy routes)
+│   │   └── v1/
+│   │       └── userController.js       # API v1 user controller
+│   ├── models/
+│   │   └── User.js                     # User schema + audit fields
+│   └── utils/
+│       ├── csvWorker.js                # CSV processing with transactions
+│       └── security.js                 # Security utilities
+├── tests/                              # Jest test suites
+│   ├── user.test.js
+│   ├── import.test.js
+│   ├── crud.test.js
+│   ├── extended.test.js
+│   └── securityVersioning.test.js
+├── jest.setup.js                       # Jest MongoDB connection setup
+├── .env.example                        # Environment configuration template
+├── package.json                        # Dependencies & scripts
+└── README.md                           # This file
 ```
 
 ---
 
-## Assumptions, Limitations & Design Decisions
+## Configuration
 
-### Validation Rules
-- **full_name**: Required, non-empty string
-- **email**: Required, must match RFC 5322 format, globally unique
-- **date_of_birth**: Required, valid ISO 8601 string, must be in the past
-- **timezone**: Optional; validated against IANA timezone database via `Intl.DateTimeFormat`
+### Environment Variables
 
-### CSV Processing Strategy
-- **Streaming**: Processes row-by-row to support large files without memory overload
-- **Error Isolation**: Invalid rows are rejected with specific messages; processing continues
-- **Duplicate Detection**: Duplicate emails are caught at both schema validation and database constraint levels
-- **Auto-Cleanup**: Uploaded files are automatically deleted after processing
-- **Memory Limit**: Maximum 200 rejected details retained in report to prevent unbounded growth
+Create a `.env` file in the root directory:
 
-### Update Operations
-- **Whitelisted Fields Only**: Only `full_name`, `email`, `date_of_birth`, `timezone` can be updated
-- **Injection Prevention**: Prevents accidental or malicious modification of unintended properties
-- **Validation Enforcement**: All schema validators applied during updates
+```env
+# Database
+MONGO_URI=mongodb://localhost:27017/legacy_import
+MONGO_URI_TEST=mongodb://localhost:27017/test_db
 
-### Error Handling
-- **Client-Safe Errors**: Generic error messages returned to API clients (implementation details not exposed)
-- **Server-Side Logging**: Full error details logged for debugging
-- **Database Error Mapping**: MongoDB error 11000 (duplicate) translated to user-friendly "Email already exists"
+# Authentication
+JWT_SECRET=your-super-secret-key-change-this-in-production
+JWT_EXPIRY=24h
+ADMIN_API_KEY=admin-default-key-change-this
+USER_API_KEY=user-default-key-change-this
 
-### Upload Security
-- **Size Limit**: 5 MB maximum file size
-- **Type Filtering**: CSV extensions and MIME types only
-- **Temporary Storage**: Files stored in `uploads/` directory, cleaned up after processing
+# Server
+PORT=3000
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:3000
+```
 
-### Database Configuration
-- **Default Connection**: `mongodb://localhost:27017/legacy_import`
-- **Test Database**: `mongodb://localhost:27017/test_db`
-- **Overridable**: Use `MONGO_URI` and `MONGO_URI_TEST` environment variables for custom URIs
-- **Index Strategy**: Email uniqueness enforced at both schema and database index levels
+### Production Configuration
 
-### Test Execution
-- **Serial Execution**: Tests run serially (`maxWorkers: 1`) to ensure database isolation and prevent race conditions
-- **Connection Management**: Single MongoDB connection shared across all test suites via `jest.setup.js`
-- **Database Cleanup**: Each test file has `beforeEach` and `afterEach` hooks to guarantee clean state
-- **Test Organization**:
-  - `user.test.js`: Validates User schema rules (required fields, email format, date constraints, timezone validation, unique constraint)
-  - `import.test.js`: Tests CSV upload endpoint with valid/invalid rows, large files, error reporting, field validation
-  - `crud.test.js`: Tests GET/PUT/DELETE operations, field whitelisting, error handling, data isolation
-  - `extended.test.js`: Edge cases (duplicate emails, memory caps, file type filtering, timezone edge cases)
+⚠️ **CRITICAL:** Change all default values for production deployment!
 
-### Limitations
-- **No Rate Limiting**: Add authentication/rate limiting for production use
-- **No Authentication**: Endpoints are unauthenticated; add security layer as needed
-- **Event Loop Blocking**: Large CSV files may block event loop (consider worker threads for scaling)
-- **Timezone Validation**: Depends on Node.js Intl support (varies across builds)
-- **No Pagination**: User listing endpoints not implemented
-- **UTF-8 Assumed**: No automatic CSV encoding detection
-- **Serial Test Execution**: Tests run sequentially (`maxWorkers: 1`) - suitable for development, may slow down CI/CD pipelines for large test suites
+See [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md) for complete production setup guide.
+
+---
+
+## Key Features
+
+### CSV Processing
+- **Streaming:** Row-by-row processing for large files (no memory overload)
+- **Validation:** Comprehensive field validation
+- **Error Handling:** Detailed error reporting with row-level details
+- **Duplicate Detection:** Prevents duplicate emails
+
+### Request Validation
+- **Email:** RFC 5322 format validation
+- **Date:** ISO 8601 format, must be in past
+- **Timezone:** Validated against IANA database
+- **Full Name:** 2-100 characters, safe characters only
+- **Injection Prevention:** Blocks NoSQL and XSS attacks
+
+### CSV Safety
+- **Bomb Detection:** Identifies malicious CSV patterns
+- **Size Limits:** 50 MB max file, 100K rows max
+- **Column Limits:** Max 100 columns per row
+- **Cell Limits:** 1 MB per cell, 10M total cells
+
+### Audit Trail
+- **Import Tracking:** Records who imported data and when
+- **Modification History:** Tracks all updates with timestamps
+- **Access Logging:** Audit log for authentication events
+- **Delete Tracking:** Records deletion events with user info
+
+---
+
+## Error Handling
+
+API returns structured error responses with helpful messages:
+
+```json
+{
+  "error": "Validation failed",
+  "details": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    }
+  ],
+  "timestamp": "2024-01-20T10:30:00.000Z"
+}
+```
+
+---
+
+## Rate Limiting
+
+The API implements tiered rate limiting to prevent abuse:
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| Authentication | 5 requests | 15 minutes |
+| General API | 100 requests | 15 minutes |
+| CSV Upload | 10 uploads | 1 hour |
+| CRUD Operations | 50 operations | 15 minutes |
+
+Rate limit headers are included in responses:
+```
+RateLimit-Limit: 100
+RateLimit-Remaining: 95
+RateLimit-Reset: 1234567890
+```
+
+---
+
+## Migration from Legacy API
+
+The service now uses versioned endpoints for the secure API. **Legacy endpoints are still mounted for compatibility**, but the recommended integration path is to migrate to v1.
+
+**Legacy (compatibility, unversioned):**
+```http
+POST /api/users/upload
+GET /api/users/:id
+PUT /api/users/:id
+DELETE /api/users/:id
+```
+
+**v1 (recommended, protected):**
+```http
+POST /api/v1/users/upload          # Requires authentication
+GET /api/v1/users/:id              # Requires authentication
+PUT /api/v1/users/:id              # Requires authentication
+DELETE /api/v1/users/:id           # Requires admin role + authentication
+```
+
+See [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md) for detailed migration guide.
+
+---
+
+## Deployment
+
+### Development
+```powershell
+npm start
+```
+
+### Production
+```bash
+npm ci --only=production
+NODE_ENV=production npm start
+```
+
+See [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md) for complete deployment checklist.
+
+---
+
+## Support & Issues
+
+For detailed troubleshooting, security information, and implementation guides:
+
+1. **Security & Production Guide:** See [SECURITY_PRODUCTION.md](SECURITY_PRODUCTION.md)
+2. **API Documentation:** Review this README and security guide
+3. **Test Suite:** Run `npm test` to verify functionality
+4. **Logs:** Check server console output for detailed error messages
+
+---
+
+## License
+
+See [LICENSE](LICENSE) file for details.
+
+---
+
+**Last Updated:** February 2026  
+**Version:** 1.0.0 - Production Ready
