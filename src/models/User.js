@@ -3,8 +3,9 @@ const validator = require('validator');
 
 /**
  * User Schema Definition
- * Defines the structure and validation rules for customer records.
- * All fields are validated at the schema level using custom validators.
+ * 
+ * Defines the structure and validation rules for customer records
+ * with audit trail support.
  */
 const userSchema = new mongoose.Schema({
   // Customer's full name - required, non-empty string
@@ -17,10 +18,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    lowercase: true,
     validate: [validator.isEmail, 'Invalid email format']
   },
   // Date of birth - required, must be a valid date in the past
-  // Prevents future or invalid dates from being stored
   date_of_birth: {
     type: Date,
     required: true,
@@ -32,18 +33,51 @@ const userSchema = new mongoose.Schema({
     }
   },
   // IANA timezone identifier (e.g., 'America/New_York', 'Europe/London')
-  // Optional field - when provided, must be a valid IANA timezone
   timezone: {
     type: String,
     required: false
+  },
+  // Audit trail: User who imported this record
+  importedBy: {
+    type: String,
+    required: false,
+    default: 'system'
+  },
+  // Audit trail: When this record was imported
+  importedAt: {
+    type: Date,
+    required: false,
+    default: Date.now
+  },
+  // Audit trail: When this record was last updated
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
+}, {
+  timestamps: true // Adds createdAt and updatedAt automatically
 });
 
 /**
  * Email Index
- * Creates a unique index on the email field to enforce uniqueness at the DB level.
- * Prevents duplicate email addresses from being inserted even in race conditions.
+ * Creates a unique index on the email field to enforce uniqueness at DB level
+ * Prevents duplicate email addresses from being inserted during race conditions
  */
 userSchema.index({ email: 1 }, { unique: true });
+
+/**
+ * Imported records index
+ * Speeds up queries filtering by import date/user
+ */
+userSchema.index({ importedAt: 1 });
+userSchema.index({ importedBy: 1 });
+
+/**
+ * Middleware: Update timestamp on save
+ */
+userSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
 
 module.exports = mongoose.model('User', userSchema);

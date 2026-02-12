@@ -26,9 +26,12 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     const allowedMime = ['text/csv', 'application/vnd.ms-excel', 'text/plain'];
-    if (ext !== '.csv' && !allowedMime.includes(file.mimetype)) {
-      return cb(new Error('Only CSV files are allowed'));
-    }
+      if (ext !== '.csv' && !allowedMime.includes(file.mimetype)) {
+        // Reject the file silently and let the route handler respond with a 400
+        // This avoids aborting the multipart stream which can cause connection resets
+        req.fileValidationError = 'Only CSV files are allowed';
+        return cb(null, false);
+      }
     cb(null, true);
   }
 });
