@@ -2,14 +2,16 @@ const fs = require('fs');
 const csv = require('csv-parser');
 
 /**
- * processCSV(filePath, validateFn, insertFn)
+ * processCSV(filePath, validateFn, insertFn, session)
  * 
  * Streams a CSV file row-by-row, validates each row, and inserts valid rows into DB.
  * Uses pause/resume to apply backpressure and prevent memory overflow.
+ * Supports MongoDB sessions for transaction support.
  * 
  * @param {string} filePath - Path to the CSV file to process
  * @param {Function} validateFn - Validation function: (row) => array of error strings (empty if valid)
- * @param {Function} insertFn - Database insert function: async (row) => Promise
+ * @param {Function} insertFn - Database insert function: async (row, session) => Promise
+ * @param {Object} session - Optional MongoDB session for transaction support
  * @returns {Promise<Object>} Report object with processed/success/rejected/rejected_details
  * 
  * Key features:
@@ -17,8 +19,9 @@ const csv = require('csv-parser');
  * - Waits for all async inserts before resolving (prevents race conditions)
  * - Caps rejected_details to prevent unbounded memory growth
  * - Handles duplicate key errors (MongoDB 11000) with user-friendly messages
+ * - Supports transactions via sessions for ACID compliance
  */
-const processCSV = (filePath, validateFn, insertFn) => {
+const processCSV = (filePath, validateFn, insertFn, session = null) => {
   return new Promise((resolve, reject) => {
     const MAX_REJECTED_DETAILS = 200; // Prevent unbounded memory growth on large rejections
     const report = { processed: 0, success: 0, rejected: 0, rejected_details: [] };
@@ -57,8 +60,8 @@ const processCSV = (filePath, validateFn, insertFn) => {
         }
 
         try {
-          // Insert valid row into database
-          await insertFn(row);
+          // Insert valid row into database (with optional session for transactions)
+          await insertFn(row, session);
           report.success++;
         } catch (err) {
           report.rejected++;
